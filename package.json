@@ -1,0 +1,48 @@
+{
+  "name": "blog-platform",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@next/swc-win32-x64-msvc": "^15.3.3",
+    "@supabase/ssr": "^0.6.1",
+    "@supabase/supabase-js": "^2.39.0",
+    "date-fns": "^4.1.0",
+    "dompurify": "^3.2.4",
+    "lucide-react": "^0.517.0",
+    "next": "^14.2.5",
+    "next-auth": "^4.24.11",
+    "quill": "^2.0.3",
+    "quill-better-table": "^1.2.10",
+    "quill-image-resize-module": "^3.0.0",
+    "quill-paste-smart": "^2.0.0",
+    "quill-table-ui": "^1.0.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-quill": "^2.0.0",
+    "react-redux": "^9.2.0"
+  },
+  "devDependencies": {
+    "@types/dompurify": "^3.0.5",
+    "@types/node": "^20.19.0",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.2.0",
+    "@types/trusted-types": "^2.0.7",
+    "@types/ws": "^8.18.1",
+    "autoprefixer": "^10.4.21",
+    "eslint": "^8.55.0",
+    "eslint-config-next": "^14.2.5",
+    "postcss": "^8.5.5",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.3.3"
+  },
+  "overrides": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}
