@@ -1,8 +1,19 @@
 import { NextResponse } from "next/server"
-import { supabase } from "@/lib/supabaseClient"
+import { createClient } from "@/lib/supabase/server"
 
 export async function GET(request: Request) {
   try {
+    const supabase = await createClient()
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
+    }
+
     const { searchParams } = new URL(request.url)
     const page = Number.parseInt(searchParams.get("page") || "1")
     const limit = Number.parseInt(searchParams.get("limit") || "10")
@@ -10,18 +21,6 @@ export async function GET(request: Request) {
     const status = searchParams.get("status") || "all"
     const category = searchParams.get("category") || "all"
     const sortBy = searchParams.get("sortBy") || "latest"
-
-    // Try to get session
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession()
-
-    if (sessionError || !session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const userId = session.user.id
 
     let query = supabase
       .from("posts")
@@ -32,9 +31,8 @@ export async function GET(request: Request) {
           tags:tag_id (name)
         )
       `)
-      .eq("user_id", userId)
+      .eq("user_id", user.id)
 
-    // Apply filters
     if (search) {
       query = query.ilike("title", `%${search}%`)
     }
@@ -47,7 +45,6 @@ export async function GET(request: Request) {
       query = query.eq("category_id", category)
     }
 
-    // Apply sorting
     switch (sortBy) {
       case "oldest":
         query = query.order("created_at", { ascending: true })
@@ -58,11 +55,10 @@ export async function GET(request: Request) {
       case "title":
         query = query.order("title", { ascending: true })
         break
-      default: // latest
+      default:
         query = query.order("created_at", { ascending: false })
     }
 
-    // Apply pagination
     const from = (page - 1) * limit
     const to = from + limit - 1
 
@@ -70,11 +66,10 @@ export async function GET(request: Request) {
 
     if (postsError) throw postsError
 
-    // Get total count for pagination
     const { count: totalCount } = await supabase
       .from("posts")
       .select("*", { count: "exact", head: true })
-      .eq("user_id", userId)
+      .eq("user_id", user.id)
 
     return NextResponse.json({
       posts: posts || [],

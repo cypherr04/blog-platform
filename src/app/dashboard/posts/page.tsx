@@ -1,88 +1,100 @@
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Post, PostStatus } from "@/lib/types";
-import { getUserPosts, deletePost, updatePost } from "@/lib/supabaseHelpers";
-import { supabase } from "@/lib/supabaseClient";
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { type Post, PostStatus } from "@/lib/types"
+import { getUserPosts, deletePost, updatePost } from "@/lib/supabaseHelpers"
+import { supabase } from "@/lib/supabaseClient"
 
 export default function MyPostsPage() {
-  const router = useRouter();
-  const [userPosts, setUserPosts] = useState<Post[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const router = useRouter()
+  const [userPosts, setUserPosts] = useState<Post[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     async function fetchUserPosts() {
       try {
-        setIsLoading(true);
-        setError(null);
-        
+        setIsLoading(true)
+        setError(null)
+
         // Get current user
-        const { data: { user } } = await supabase.auth.getUser();
-        
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+
         if (!user) {
-          router.push("/login");
-          return;
+          router.push("/login")
+          return
         }
-        
+
         // Fetch user's posts
-        const posts = await getUserPosts(user.id);
-        setUserPosts(posts);
+        const posts = await getUserPosts(user.id)
+        setUserPosts(posts)
       } catch (err: any) {
-        console.error("Error fetching posts:", err);
-        setError("Failed to load posts. Please try again.");
+        console.error("Error fetching posts:", err)
+        setError("Failed to load posts. Please try again.")
       } finally {
-        setIsLoading(false);
+        setIsLoading(false)
       }
     }
 
-    fetchUserPosts();
-  }, [router]);
+    fetchUserPosts()
+  }, [router])
 
   const handleDelete = async (postId: string) => {
     if (window.confirm("Are you sure you want to delete this post?")) {
       try {
-        await deletePost(postId);
-        setUserPosts(userPosts.filter(post => post.id !== postId));
-        alert("Post deleted successfully.");
+        await deletePost(postId)
+        setUserPosts(userPosts.filter((post) => post.id !== postId))
+        alert("Post deleted successfully.")
       } catch (err) {
-        console.error("Error deleting post:", err);
-        alert("Failed to delete post. Please try again.");
+        console.error("Error deleting post:", err)
+        alert("Failed to delete post. Please try again.")
       }
     }
-  };
+  }
 
   const handlePublishToggle = async (postId: string, currentStatus: PostStatus) => {
     try {
-      const newStatus = currentStatus === PostStatus.PUBLISHED ? PostStatus.DRAFT : PostStatus.PUBLISHED;
-      const publishedAt = newStatus === PostStatus.PUBLISHED ? new Date() : null;
-      
-      await updatePost(postId, { 
+      const newStatus = currentStatus === PostStatus.PUBLISHED ? PostStatus.DRAFT : PostStatus.PUBLISHED
+      const publishedAt = newStatus === PostStatus.PUBLISHED ? new Date() : null
+
+      const currentPost = userPosts.find((post) => post.id === postId)
+      if (!currentPost) {
+        alert("Post not found.")
+        return
+      }
+      await updatePost(postId, {
+        ...currentPost,
+        image_url: currentPost.image_url ?? "",
         status: newStatus,
-        published_at: publishedAt ? publishedAt.toISOString() : null
-      });
-      
-      setUserPosts(userPosts.map(post => 
-        post.id === postId 
-          ? { ...post, status: newStatus, published_at: publishedAt ? publishedAt.toISOString() : null } 
-          : post
-      ));
-      
-      alert(`Post ${newStatus === PostStatus.PUBLISHED ? "published" : "unpublished"} successfully.`);
+        published_at: publishedAt ? publishedAt.toISOString() : undefined,
+        category_id: currentPost.category_id ?? "",
+      })
+
+      setUserPosts(
+        userPosts.map((post) =>
+          post.id === postId
+            ? { ...post, status: newStatus, published_at: publishedAt ? publishedAt.toISOString() : null }
+            : post,
+        ),
+      )
+
+      alert(`Post ${newStatus === PostStatus.PUBLISHED ? "published" : "unpublished"} successfully.`)
     } catch (err) {
-      console.error("Error updating post status:", err);
-      alert("Failed to update post status. Please try again.");
+      console.error("Error updating post status:", err)
+      alert("Failed to update post status. Please try again.")
     }
-  };
+  }
 
   if (isLoading) {
-    return <p className="text-center py-12">Loading your posts...</p>;
+    return <p className="text-center py-12">Loading your posts...</p>
   }
 
   if (error) {
-    return <p className="text-center text-red-500 py-12">{error}</p>;
+    return <p className="text-center text-red-500 py-12">{error}</p>
   }
 
   return (
@@ -104,10 +116,18 @@ export default function MyPostsPage() {
             <table className="min-w-full bg-white">
               <thead>
                 <tr>
-                  <th className="py-2 px-4 border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Title</th>
-                  <th className="py-2 px-4 border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                  <th className="py-2 px-4 border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Published Date</th>
-                  <th className="py-2 px-4 border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                  <th className="py-2 px-4 border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Title
+                  </th>
+                  <th className="py-2 px-4 border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="py-2 px-4 border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Published Date
+                  </th>
+                  <th className="py-2 px-4 border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -119,7 +139,9 @@ export default function MyPostsPage() {
                       </Link>
                     </td>
                     <td className="py-2 px-4 border-b border-gray-200 text-sm">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${post.status === PostStatus.PUBLISHED ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}>
+                      <span
+                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${post.status === PostStatus.PUBLISHED ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}
+                      >
                         {post.status}
                       </span>
                     </td>
@@ -127,7 +149,10 @@ export default function MyPostsPage() {
                       {post.published_at ? new Date(post.published_at).toLocaleDateString() : "N/A"}
                     </td>
                     <td className="py-2 px-4 border-b border-gray-200 text-sm">
-                      <Link href={`/dashboard/posts/${post.id}/edit`} className="text-indigo-600 hover:text-indigo-900 mr-3">
+                      <Link
+                        href={`/dashboard/posts/${post.id}/edit`}
+                        className="text-indigo-600 hover:text-indigo-900 mr-3"
+                      >
                         Edit
                       </Link>
                       <button
@@ -136,10 +161,7 @@ export default function MyPostsPage() {
                       >
                         {post.status === PostStatus.PUBLISHED ? "Unpublish" : "Publish"}
                       </button>
-                      <button
-                        onClick={() => handleDelete(post.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
+                      <button onClick={() => handleDelete(post.id)} className="text-red-600 hover:text-red-900">
                         Delete
                       </button>
                     </td>
@@ -151,5 +173,5 @@ export default function MyPostsPage() {
         )}
       </div>
     </section>
-  );
+  )
 }

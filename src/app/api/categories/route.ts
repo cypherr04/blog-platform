@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
-import { supabase } from "@/lib/supabaseClient"
+import { createClient } from "@/lib/supabase/server"
 
 export async function GET() {
   try {
-    // First get all categories
+    const supabase = await createClient()
+
     const { data: categories, error: categoriesError } = await supabase.from("categories").select("*").order("name")
 
     if (categoriesError) throw categoriesError
@@ -12,7 +13,6 @@ export async function GET() {
       return NextResponse.json({ data: [], error: null })
     }
 
-    // Then get post counts for each category
     const categoriesWithCounts = await Promise.all(
       categories.map(async (category) => {
         const { count, error: countError } = await supabase

@@ -1,25 +1,14 @@
 "use client"
 
 import type React from "react"
-
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { PostStatus } from "@/lib/types"
-import { createPost, getCategories, getTags } from "@/lib/supabaseHelpers"
+import { getCategories, getTags } from "@/lib/supabaseHelpers"
 import { supabase } from "@/lib/supabaseClient"
-import dynamic from "next/dynamic"
 import RichTextEditor from "@/components/RichTextEditor"
 import ImageUpload from "@/components/imageUpload"
 import type { ImageProcessingResult } from "@/lib/imageUtils"
-
-// Dynamically import the rich text editor to avoid SSR issues
-const ReactQuill = dynamic(() => import("react-quill"), {
-  ssr: false,
-  loading: () => <div className="h-64 w-full bg-gray-50 animate-pulse rounded-md"></div>,
-})
-
-// Import Quill styles
-import "react-quill/dist/quill.snow.css"
 
 export default function CreateNewPostPage() {
   const router = useRouter()
@@ -28,15 +17,13 @@ export default function CreateNewPostPage() {
   const [summary, setSummary] = useState("")
   const [category, setCategory] = useState("")
   const [selectedTags, setSelectedTags] = useState<string[]>([])
-  const [status, setStatus] = useState<PostStatus>(PostStatus.DRAFT)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
-  // Enhanced image upload states
+  // Featured image states
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [imageMetadata, setImageMetadata] = useState<ImageProcessingResult | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
 
@@ -44,17 +31,23 @@ export default function CreateNewPostPage() {
   const [categories, setCategories] = useState<any[]>([])
   const [tags, setTags] = useState<any[]>([])
 
-  // Auto-save functionality
-  const [lastSaved, setLastSaved] = useState<Date | null>(null)
-  const [autoSaveEnabled, setAutoSaveEnabled] = useState(true)
-  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
+  // Debug state
+  const [debugInfo, setDebugInfo] = useState<string[]>([])
+  const [currentUser, setCurrentUser] = useState<any>(null)
+
+  const addDebugInfo = (info: string) => {
+    const timestamp = new Date().toLocaleTimeString()
+    const logEntry = `${timestamp}: ${info}`
+    console.log(`[DEBUG] ${logEntry}`)
+    setDebugInfo((prev) => [...prev.slice(-15), logEntry])
+  }
 
   useEffect(() => {
     async function fetchData() {
       try {
         setIsLoading(true)
+        addDebugInfo("Fetching initial data...")
 
-        // Check if user is authenticated
         const {
           data: { user },
         } = await supabase.auth.getUser()
@@ -64,36 +57,23 @@ export default function CreateNewPostPage() {
           return
         }
 
-        // Fetch categories and tags
-        const [categoriesData, tagsData] = await Promise.all([getCategories(), getTags()])
+        setCurrentUser(user)
+        addDebugInfo(`User: ${user.id}`)
 
+        const [categoriesData, tagsData] = await Promise.all([getCategories(), getTags()])
         setCategories(categoriesData || [])
         setTags(tagsData || [])
-      } catch (err) {
-        console.error("Error fetching data:", err)
-        setError("Failed to load necessary data. Please try again.")
+        addDebugInfo(`Loaded ${categoriesData?.length || 0} categories, ${tagsData?.length || 0} tags`)
+      } catch (err: any) {
+        addDebugInfo(`Error: ${err.message}`)
+        setError(err.message)
       } finally {
         setIsLoading(false)
       }
     }
 
     fetchData()
-
-    // Set up auto-save timer
-    if (autoSaveEnabled) {
-      autoSaveTimerRef.current = setInterval(() => {
-        if (title && content) {
-          handleAutoSave()
-        }
-      }, 60000) // Auto-save every minute
-    }
-
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearInterval(autoSaveTimerRef.current)
-      }
-    }
-  }, [router, autoSaveEnabled])
+  }, [router])
 
   const handleTagChange = (tagId: string) => {
     setSelectedTags((prevTags) =>
@@ -101,205 +81,167 @@ export default function CreateNewPostPage() {
     )
   }
 
-  // Enhanced image handling
   const handleImageSelect = (file: File, metadata: ImageProcessingResult) => {
     setSelectedImageFile(file)
-    setImageMetadata(metadata)
-
-    // Create preview URL
     const previewUrl = URL.createObjectURL(file)
     setImagePreview(previewUrl)
-
-    // Clear any previous errors
     setError(null)
+    addDebugInfo(`Featured image selected: ${file.name}`)
   }
 
   const handleImageRemove = () => {
     setSelectedImageFile(null)
-    setImageMetadata(null)
-
-    // Clean up preview URL
     if (imagePreview) {
       URL.revokeObjectURL(imagePreview)
       setImagePreview(null)
     }
+    addDebugInfo("Featured image removed")
   }
 
-  // Enhanced image upload with progress tracking
-  const uploadImageToSupabase = async (userId: string): Promise<string | null> => {
+  // Simple featured image upload that won't hang
+  const uploadFeaturedImage = async (userId: string): Promise<string | null> => {
     if (!selectedImageFile) return null
 
     try {
-      setIsUploading(true)
-      setUploadProgress(0)
+      addDebugInfo("Starting featured image upload...")
 
-      // Ensure the storage bucket exists
-      await ensureStorageBucket()
-      setUploadProgress(20)
-
-      // Create unique file path
       const timestamp = Date.now()
+      const randomId = Math.random().toString(36).substring(7)
       const fileExtension = selectedImageFile.name.split(".").pop() || "webp"
-      const fileName = `${userId}/${timestamp}_${Math.random().toString(36).substring(7)}.${fileExtension}`
-      const filePath = `post-images/${fileName}`
+      const fileName = `${timestamp}_${randomId}.${fileExtension}`
+      const filePath = `post-images/${userId}/${fileName}` // Fixed path structure
 
-      setUploadProgress(40)
+      addDebugInfo(`Uploading to: ${filePath}`)
 
-      // Upload to Supabase Storage with progress tracking
-      const { data, error } = await supabase.storage.from("blog-images").upload(filePath, selectedImageFile, {
-        cacheControl: "3600",
-        upsert: false,
-        contentType: selectedImageFile.type,
-      })
+      // Simple upload - no progress tracking
+      const { data, error } = await supabase.storage.from("blog-images").upload(filePath, selectedImageFile)
 
-      if (error) throw error
+      if (error) {
+        addDebugInfo(`Upload error: ${error.message}`)
+        throw error
+      }
 
-      setUploadProgress(80)
+      addDebugInfo(`Upload successful: ${data.path}`)
 
       // Get public URL
       const {
         data: { publicUrl },
       } = supabase.storage.from("blog-images").getPublicUrl(filePath)
 
-      setUploadProgress(100)
+      addDebugInfo(`Public URL: ${publicUrl}`)
       return publicUrl
-    } catch (err) {
-      console.error("Error uploading image:", err)
+    } catch (err: any) {
+      addDebugInfo(`Upload failed: ${err.message}`)
       throw err
-    } finally {
-      setIsUploading(false)
-      setTimeout(() => setUploadProgress(0), 1000)
-    }
-  }
-
-  // Create storage bucket if it doesn't exist
-  const ensureStorageBucket = async () => {
-    try {
-      const { data: buckets } = await supabase.storage.listBuckets()
-      const bucketExists = buckets?.some((bucket) => bucket.name === "blog-images")
-
-      if (!bucketExists) {
-        await supabase.storage.createBucket("blog-images", {
-          public: true,
-          fileSizeLimit: 10485760, // 10MB in bytes
-          allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
-        })
-      }
-
-      return true
-    } catch (error) {
-      console.error("Error ensuring storage bucket exists:", error)
-      return false
-    }
-  }
-
-  const handleAutoSave = async () => {
-    try {
-      // Get current user
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user) return
-
-      // Create slug from title
-      const slug = title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-*|-*$/g, "")
-
-      // Create post object
-      const newPost = {
-        user_id: user.id,
-        title,
-        slug,
-        content,
-        summary,
-        image_url: imagePreview || "https://via.placeholder.com/800x400",
-        status: PostStatus.DRAFT,
-        published_at: null, // Always null for auto-save drafts
-        category_id: category || null,
-        tags: selectedTags,
-      }
-
-      // Save post to Supabase
-      await createPost(newPost)
-      setLastSaved(new Date())
-    } catch (err) {
-      console.error("Error auto-saving post:", err)
-      // Don't show error to user for auto-save
     }
   }
 
   const handleSubmit = async (e: React.FormEvent, publish: boolean) => {
     e.preventDefault()
+
+    if (isSaving) {
+      addDebugInfo("Already saving, ignoring duplicate submission")
+      return
+    }
+
+    addDebugInfo(`=== STARTING ${publish ? "PUBLISH" : "DRAFT"} ===`)
     setError(null)
-
-    if (!title || !content) {
-      setError("Title and Content are required.")
-      return
-    }
-
-    if (publish && !category) {
-      setError("Please select a category before publishing.")
-      return
-    }
-
     setIsSaving(true)
 
     try {
-      // Get current user
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user) {
-        setError("User not authenticated.")
-        return
+      // Basic validation
+      if (!title?.trim()) {
+        throw new Error("Title is required")
+      }
+      if (!content?.trim()) {
+        throw new Error("Content is required")
+      }
+      if (publish && !category) {
+        throw new Error("Category is required for publishing")
       }
 
-      // Upload image if provided
-      let imageUrl = null
+      addDebugInfo("Validation passed")
+
+      // Get user
+      if (!currentUser) {
+        throw new Error("User not authenticated")
+      }
+
+      addDebugInfo(`User confirmed: ${currentUser.id}`)
+
+      // Upload featured image if exists
+      let featuredImageUrl = null
       if (selectedImageFile) {
+        addDebugInfo("Uploading featured image...")
+        setIsUploading(true)
         try {
-          imageUrl = await uploadImageToSupabase(user.id)
+          featuredImageUrl = await uploadFeaturedImage(currentUser.id)
+          addDebugInfo("Featured image uploaded successfully")
         } catch (err: any) {
-          setError(`Failed to upload image: ${err.message}`)
-          setIsSaving(false)
-          return
+          addDebugInfo(`Featured image upload failed: ${err.message}`)
+          // Don't fail the entire post - just continue without featured image
+          addDebugInfo("Continuing without featured image...")
+        } finally {
+          setIsUploading(false)
         }
       }
 
-      // Create slug from title
+      // Create slug
       const slug = title
         .toLowerCase()
+        .trim()
         .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-*|-*$/g, "")
+        .replace(/^-+|-+$/g, "")
 
-      // Create post object
-      const newPost = {
-        user_id: user.id,
-        title,
+      // Prepare post data
+      const postData = {
+        user_id: currentUser.id,
+        title: title.trim(),
         slug,
         content,
-        summary,
-        image_url: imageUrl || imagePreview || "https://via.placeholder.com/800x400",
+        summary: summary.trim(),
+        image_url: featuredImageUrl, // Use uploaded image URL
         status: publish ? PostStatus.PUBLISHED : PostStatus.DRAFT,
         published_at: publish ? new Date().toISOString() : null,
         category_id: category || null,
         tags: selectedTags,
       }
 
-      // Save post to Supabase
-      await createPost(newPost)
+      addDebugInfo("POST DATA PREPARED - MAKING API CALL NOW...")
+      addDebugInfo(`API URL: /api/posts`)
+      addDebugInfo(`Method: POST`)
+      addDebugInfo(`Data: ${JSON.stringify(postData, null, 2)}`)
 
-      alert(`Post ${publish ? "published" : "saved as draft"} successfully.`)
+      // Make API call
+      const response = await fetch("/api/posts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(postData),
+      })
+
+      addDebugInfo(`API RESPONSE RECEIVED: ${response.status} ${response.statusText}`)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        addDebugInfo(`API ERROR RESPONSE: ${errorText}`)
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
+      }
+
+      const result = await response.json()
+      addDebugInfo(`API SUCCESS: ${JSON.stringify(result)}`)
+      addDebugInfo(`Post created with ID: ${result.data?.id}`)
+
+      alert(`Post ${publish ? "published" : "saved as draft"} successfully!`)
       router.push("/dashboard/posts")
     } catch (err: any) {
-      console.error("Error creating post:", err)
-      setError(err.message || "Failed to create post. Please try again.")
+      addDebugInfo(`ERROR: ${err.message}`)
+      addDebugInfo(`ERROR STACK: ${err.stack}`)
+      setError(err.message)
     } finally {
       setIsSaving(false)
+      addDebugInfo("=== SUBMISSION ENDED ===")
     }
   }
 
@@ -313,7 +255,6 @@ export default function CreateNewPostPage() {
 
   return (
     <div className="bg-gray-50 min-h-screen pb-12">
-      {/* Page Header */}
       <div className="bg-white shadow-sm">
         <div className="container mx-auto px-6 py-8">
           <h1 className="text-3xl font-bold text-gray-900">Create New Post</h1>
@@ -323,28 +264,27 @@ export default function CreateNewPostPage() {
 
       <div className="container mx-auto px-6 py-8">
         <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-          <form className="p-6 space-y-6">
-            {/* Auto-save indicator */}
-            <div className="flex justify-between items-center">
-              <div className="flex items-center">
-                <label className="inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={autoSaveEnabled}
-                    onChange={() => setAutoSaveEnabled(!autoSaveEnabled)}
-                    className="sr-only peer"
-                  />
-                  <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  <span className="ms-3 text-sm font-medium text-gray-700">Auto-save</span>
-                </label>
-              </div>
-              {lastSaved && <span className="text-sm text-gray-500">Last saved: {lastSaved.toLocaleTimeString()}</span>}
+          <form onSubmit={(e) => e.preventDefault()} className="p-6 space-y-6">
+            {/* Simple Debug Panel */}
+            <div className="bg-gray-100 p-3 rounded-md">
+              <details>
+                <summary className="text-sm font-medium text-gray-700 cursor-pointer">
+                  Debug ({debugInfo.length}) - {isSaving ? "SAVING..." : "Ready"}
+                </summary>
+                <div className="mt-2 text-xs text-gray-600 space-y-1 max-h-40 overflow-y-auto">
+                  {debugInfo.map((info, index) => (
+                    <div key={index} className={info.includes("ERROR") ? "text-red-600" : ""}>
+                      {info}
+                    </div>
+                  ))}
+                </div>
+              </details>
             </div>
 
             {/* Title */}
             <div>
               <label htmlFor="title" className="block text-sm font-medium text-gray-700">
-                Title
+                Title *
               </label>
               <input
                 type="text"
@@ -371,20 +311,18 @@ export default function CreateNewPostPage() {
                 onChange={(e) => setSummary(e.target.value)}
                 placeholder="Write a brief summary of your post"
                 disabled={isSaving}
-              ></textarea>
+              />
             </div>
 
-            {/* Content - Rich Text Editor */}
+            {/* Content */}
             <div>
-              <label htmlFor="content" className="block text-sm font-medium text-gray-700 mb-2">
-                Content
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Content *</label>
               <div className="min-h-[400px]">
                 <RichTextEditor value={content} onChange={setContent} />
               </div>
             </div>
 
-            {/* Enhanced Featured Image Upload */}
+            {/* Featured Image */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Featured Image</label>
               <ImageUpload
@@ -399,18 +337,11 @@ export default function CreateNewPostPage() {
                 className="w-full"
               />
 
-              {/* Upload Progress */}
               {isUploading && (
                 <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                  <div className="flex items-center justify-between text-sm text-blue-800 mb-2">
-                    <span className="font-medium">Uploading image...</span>
-                    <span>{uploadProgress}%</span>
-                  </div>
-                  <div className="w-full bg-blue-200 rounded-full h-2">
-                    <div
-                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${uploadProgress}%` }}
-                    ></div>
+                  <div className="flex items-center text-sm text-blue-800">
+                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-600 mr-2"></div>
+                    <span className="font-medium">Uploading featured image...</span>
                   </div>
                 </div>
               )}
@@ -420,7 +351,7 @@ export default function CreateNewPostPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label htmlFor="category" className="block text-sm font-medium text-gray-700">
-                  Category
+                  Category *
                 </label>
                 <select
                   id="category"
@@ -448,14 +379,14 @@ export default function CreateNewPostPage() {
                       {tags.map((tag) => (
                         <label
                           key={tag.id}
-                          className="inline-flex items-center text-black bg-gray-100 px-3 py-1 rounded-full text-sm"
+                          className="inline-flex items-center text-black bg-gray-100 px-3 py-1 rounded-full text-sm hover:bg-gray-200"
                         >
                           <input
                             type="checkbox"
                             value={tag.id}
                             checked={selectedTags.includes(tag.id)}
                             onChange={() => handleTagChange(tag.id)}
-                            className="form-checkbox h-4 w-4 text-black mr-2 focus:ring-blue-500"
+                            className="form-checkbox h-4 w-4 text-blue-600 mr-2 focus:ring-blue-500"
                             disabled={isSaving}
                           />
                           {tag.name}
@@ -468,7 +399,7 @@ export default function CreateNewPostPage() {
             </div>
 
             {error && (
-              <div className="rounded-md bg-red-50 p-4">
+              <div className="rounded-md bg-red-50 p-4 border border-red-200">
                 <div className="flex">
                   <div className="flex-shrink-0">
                     <svg
@@ -485,7 +416,8 @@ export default function CreateNewPostPage() {
                     </svg>
                   </div>
                   <div className="ml-3">
-                    <h3 className="text-sm font-medium text-red-800">{error}</h3>
+                    <h3 className="text-sm font-medium text-red-800">Error</h3>
+                    <p className="text-sm text-red-700 mt-1">{error}</p>
                   </div>
                 </div>
               </div>
@@ -496,23 +428,25 @@ export default function CreateNewPostPage() {
               <button
                 type="button"
                 onClick={() => router.back()}
-                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
                 disabled={isSaving || isUploading}
               >
                 Cancel
               </button>
+
               <button
                 type="button"
                 onClick={(e) => handleSubmit(e, false)}
-                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
                 disabled={isSaving || isUploading}
               >
                 {isSaving ? "Saving..." : "Save Draft"}
               </button>
+
               <button
                 type="button"
                 onClick={(e) => handleSubmit(e, true)}
-                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
                 disabled={isSaving || isUploading}
               >
                 {isSaving ? "Publishing..." : "Publish"}

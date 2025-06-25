@@ -1,55 +1,29 @@
 import { NextResponse } from "next/server"
-import { supabase } from "@/lib/supabaseClient"
-import { cookies } from "next/headers"
+import { createClient } from "@/lib/supabase/server"
 
 export async function GET() {
   try {
-    const cookieStore = await cookies()
+    const supabase = await createClient()
 
-    // Get all cookies and find Supabase auth cookies
-    const allCookies = cookieStore.getAll()
-    const authCookies = allCookies.filter(
-      (cookie) => cookie.name.includes("supabase") || cookie.name.includes("sb-") || cookie.name.includes("auth"),
-    )
-
-    console.log(
-      "Available cookies:",
-      allCookies.map((c) => c.name),
-    )
-    console.log(
-      "Auth cookies found:",
-      authCookies.map((c) => c.name),
-    )
-
-    if (authCookies.length === 0) {
-      return NextResponse.json({ error: "No auth cookies found" }, { status: 401 })
-    }
-
-    // Try to get session using the client-side approach
     const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession()
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
 
-    if (sessionError || !session?.user) {
-      console.log("Session error:", sessionError)
-      return NextResponse.json({ error: "No valid session" }, { status: 401 })
+    if (userError || !user) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
     }
 
-    const userId = session.user.id
-
-    // Get user's posts with stats
     const { data: posts, error: postsError } = await supabase
       .from("posts")
       .select("id, status, view_count, created_at")
-      .eq("user_id", userId)
+      .eq("user_id", user.id)
 
     if (postsError) {
       console.error("Posts error:", postsError)
       throw postsError
     }
 
-    // Calculate stats
     const totalPosts = posts?.length || 0
     const publishedPosts = posts?.filter((post) => post.status === "PUBLISHED").length || 0
     const draftPosts = posts?.filter((post) => post.status === "DRAFT").length || 0

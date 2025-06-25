@@ -1,32 +1,68 @@
-import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
+import { createServerClient } from "@supabase/ssr"
+import { NextResponse, type NextRequest } from "next/server"
 
-export async function middleware(req: NextRequest) {
-  // For dashboard routes, check if user has auth cookies
-  if (req.nextUrl.pathname.startsWith("/dashboard")) {
-    const cookieNames = Array.from(req.cookies.getAll()).map((cookie) => cookie.name)
-    const hasAuthCookie = cookieNames.some((name) => name.includes("auth-token") && !name.includes("api"))
+export async function middleware(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({
+    request,
+  })
 
-    if (!hasAuthCookie) {
-      console.log("No auth cookie found, redirecting to login")
-      return NextResponse.redirect(new URL("/login", req.url))
-    }
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          supabaseResponse = NextResponse.next({
+            request,
+          })
+          cookiesToSet.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options))
+        },
+      },
+    },
+  )
+
+  // IMPORTANT: Avoid writing any logic between createServerClient and
+  // supabase.auth.getUser(). A simple mistake could make it very hard to debug
+  // issues with users being randomly logged out.
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  // Protected routes that require authentication
+  const protectedRoutes = ["/dashboard", "/profile", "/settings"]
+  const isProtectedRoute = protectedRoutes.some((route) => request.nextUrl.pathname.startsWith(route))
+
+  if (isProtectedRoute && !user) {
+    // No user, redirect to login
+    const redirectUrl = new URL("/login", request.url)
+    redirectUrl.searchParams.set("redirectTo", request.nextUrl.pathname)
+    return NextResponse.redirect(redirectUrl)
   }
 
-  // For login/register pages, redirect to dashboard if has auth cookies
-  if (req.nextUrl.pathname === "/login" || req.nextUrl.pathname === "/register") {
-    const cookieNames = Array.from(req.cookies.getAll()).map((cookie) => cookie.name)
-    const hasAuthCookie = cookieNames.some((name) => name.includes("auth-token") && !name.includes("api"))
+  // IMPORTANT: You *must* return the supabaseResponse object as it is. If you're
+  // creating a new response object with NextResponse.next() make sure to:
+  // 1. Pass the request in it, like so: NextResponse.next({ request })
+  // 2. Copy over the cookies, like so: supabaseResponse.cookies.getAll().forEach(...)
+  // 3. Change the headers of the new response
+  // 4. Most importantly, return the new response object, not the old supabaseResponse object
 
-    if (hasAuthCookie) {
-      console.log("Auth cookie found, redirecting to dashboard")
-      return NextResponse.redirect(new URL("/dashboard", req.url))
-    }
-  }
-
-  return NextResponse.next()
+  return supabaseResponse
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/login", "/register"],
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * Feel free to modify this pattern to include more paths.
+     */
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 }

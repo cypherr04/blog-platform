@@ -1,11 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { supabase } from "@/lib/supabaseClient"
-import { createClient } from "@supabase/supabase-js"
-import { cookies } from "next/headers"
+import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
-// GET comments for a post
 export async function GET(request: NextRequest, { params }: { params: { postId: string } }) {
   try {
+    const supabase = await createClient()
     const { postId } = params
 
     const { data: comments, error } = await supabase
@@ -35,9 +34,10 @@ export async function GET(request: NextRequest, { params }: { params: { postId: 
   }
 }
 
-// POST new comment
 export async function POST(request: NextRequest, { params }: { params: { postId: string } }) {
   try {
+    const supabase = await createClient()
+    const adminSupabase = createAdminClient()
     const { postId } = params
     const { content } = await request.json()
 
@@ -45,92 +45,16 @@ export async function POST(request: NextRequest, { params }: { params: { postId:
       return NextResponse.json({ error: "Content is required" }, { status: 400 })
     }
 
-    // Get cookies
-    const cookieStore = await cookies()
-
-    // Create Supabase client for auth verification
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-    const authSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    })
-
-    // Get authorization header
-    const authHeader = request.headers.get("authorization")
-    let accessToken = null
-
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      accessToken = authHeader.substring(7)
-    } else {
-      // Try to get from cookies - check all possible cookie names
-      const allCookies = cookieStore.getAll()
-      console.log(
-        "All cookies:",
-        allCookies.map((c) => ({ name: c.name, hasValue: !!c.value })),
-      )
-
-      // Common Supabase cookie patterns
-      const possibleAuthCookies = allCookies.filter(
-        (cookie) =>
-          cookie.name.includes("supabase") ||
-          cookie.name.includes("sb-") ||
-          cookie.name.includes("auth") ||
-          cookie.name.includes("session") ||
-          cookie.name.includes("access"),
-      )
-
-      console.log(
-        "Possible auth cookies:",
-        possibleAuthCookies.map((c) => c.name),
-      )
-
-      for (const cookie of possibleAuthCookies) {
-        try {
-          // Try to parse as JSON first
-          const parsed = JSON.parse(cookie.value)
-          if (parsed.access_token) {
-            accessToken = parsed.access_token
-            break
-          }
-        } catch {
-          // If not JSON, might be direct token
-          if (cookie.value && cookie.value.length > 20) {
-            accessToken = cookie.value
-            break
-          }
-        }
-      }
-    }
-
-    if (!accessToken) {
-      return NextResponse.json({ error: "No access token found" }, { status: 401 })
-    }
-
-    // Verify the user with the access token
     const {
       data: { user },
       error: authError,
-    } = await authSupabase.auth.getUser(accessToken)
+    } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      console.error("Auth error:", authError)
-      return NextResponse.json({ error: "Invalid authentication" }, { status: 401 })
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
     }
 
-    // Create server Supabase client for database operations
-    const serverSupabase = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    })
-
-    // Insert comment using the server client
-    const { data: comment, error: insertError } = await serverSupabase
+    const { data: comment, error: insertError } = await adminSupabase
       .from("comments")
       .insert([
         {

@@ -1,104 +1,207 @@
 "use client"
 
 import type React from "react"
-
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { usePathname } from "next/navigation"
-import { supabase } from "@/lib/supabaseClient"
-import { useAuth } from "@/lib/supabaseHelpers"
+import { usePathname, useRouter } from "next/navigation"
+import { createBrowserClient } from "@supabase/ssr"
+import type { User } from "@supabase/supabase-js"
+
+interface Profile {
+  id: string
+  full_name: string | null
+  avatar_url: string | null
+}
+
+interface UserWithProfile extends User {
+  profile?: Profile
+}
 
 export default function MainNavigation() {
   const pathname = usePathname()
-  const { user, profile, loading } = useAuth()
+  const router = useRouter()
+  const [user, setUser] = useState<UserWithProfile | null>(null)
+  const [loading, setLoading] = useState(true)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
 
-  // Close menus when clicking outside
+  // Create Supabase client once
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  )
+
+  // Fetch user with profile in a single optimized call
+  const fetchUserWithProfile = useCallback(
+    async (userId: string) => {
+      try {
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("id, full_name, avatar_url")
+          .eq("id", userId)
+          .single()
+
+        return profileData
+      } catch (error) {
+        console.error("Error fetching profile:", error)
+        return null
+      }
+    },
+    [supabase],
+  )
+
+  // Initialize auth state efficiently
   useEffect(() => {
+    let mounted = true
+
+    const initializeAuth = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+
+        if (!mounted) return
+
+        if (session?.user) {
+          // Fetch profile data only if we have a user
+          const profile = await fetchUserWithProfile(session.user.id)
+
+          if (mounted) {
+            setUser({
+              ...session.user,
+              profile: profile || undefined,
+            })
+          }
+        } else {
+          setUser(null)
+        }
+      } catch (error) {
+        console.error("Auth initialization error:", error)
+        if (mounted) setUser(null)
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+
+    initializeAuth()
+
+    // Listen for auth changes with optimized handling
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return
+
+      if (event === "SIGNED_IN" && session?.user) {
+        const profile = await fetchUserWithProfile(session.user.id)
+        setUser({
+          ...session.user,
+          profile: profile || undefined,
+        })
+      } else if (event === "SIGNED_OUT") {
+        setUser(null)
+      }
+
+      setLoading(false)
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [supabase, fetchUserWithProfile])
+
+  // Close menus when clicking outside - optimized
+  useEffect(() => {
+    if (!isMenuOpen && !isProfileMenuOpen) return
+
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Element
-      // Check if click is outside both menus
       if (!target.closest('[data-menu="mobile"]') && !target.closest('[data-menu="profile"]')) {
         setIsMenuOpen(false)
         setIsProfileMenuOpen(false)
       }
     }
 
-    if (isMenuOpen || isProfileMenuOpen) {
-      document.addEventListener("mousedown", handleClickOutside)
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside)
-      }
-    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [isMenuOpen, isProfileMenuOpen])
 
-  const toggleMenu = (e: React.MouseEvent) => {
+  const toggleMenu = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
-    setIsMenuOpen(!isMenuOpen)
+    setIsMenuOpen((prev) => !prev)
     setIsProfileMenuOpen(false)
-  }
+  }, [])
 
-  const toggleProfileMenu = (e: React.MouseEvent) => {
+  const toggleProfileMenu = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
-    setIsProfileMenuOpen(!isProfileMenuOpen)
+    setIsProfileMenuOpen((prev) => !prev)
     setIsMenuOpen(false)
-  }
+  }, [])
 
-  return (
-    <nav className="bg-white border-b border-gray-100 sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <div className="flex items-center">
+  const handleSignOut = useCallback(async () => {
+    await supabase.auth.signOut()
+    setIsProfileMenuOpen(false)
+    router.push("/")
+  }, [supabase, router])
+
+  // Optimized loading state
+  if (loading) {
+    return (
+      <nav className="bg-white border-b border-gray-100 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
             <Link href="/" className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-sm">C</span>
               </div>
               <span className="text-xl font-bold text-gray-900">ContentAI</span>
             </Link>
+            <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse"></div>
           </div>
+        </div>
+      </nav>
+    )
+  }
+
+  // Get display values
+  const displayName = user?.profile?.full_name || "User"
+  const avatarUrl = user?.profile?.avatar_url
+  const userInitial = displayName.charAt(0) || user?.email?.charAt(0) || "U"
+
+  return (
+    <nav className="bg-white border-b border-gray-100 sticky top-0 z-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16">
+          {/* Logo */}
+          <Link href="/" className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-sm">C</span>
+            </div>
+            <span className="text-xl font-bold text-gray-900">ContentAI</span>
+          </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:block">
-            <div className="flex items-center space-x-8">
+          <div className="hidden md:flex items-center space-x-8">
+            {[
+              { href: "/", label: "Home" },
+              { href: "/trending", label: "Trending" },
+              { href: "/categories", label: "Categories" },
+              { href: "/about", label: "About" },
+            ].map(({ href, label }) => (
               <Link
-                href="/"
+                key={href}
+                href={href}
                 className={`text-sm font-medium transition-colors ${
-                  pathname === "/" ? "text-purple-600" : "text-gray-700 hover:text-purple-600"
+                  pathname === href ? "text-purple-600" : "text-gray-700 hover:text-purple-600"
                 }`}
               >
-                Home
+                {label}
               </Link>
-              <Link
-                href="/trending"
-                className={`text-sm font-medium transition-colors ${
-                  pathname === "/trending" ? "text-purple-600" : "text-gray-700 hover:text-purple-600"
-                }`}
-              >
-                Trending
-              </Link>
-              <Link
-                href="/categories"
-                className={`text-sm font-medium transition-colors ${
-                  pathname === "/categories" ? "text-purple-600" : "text-gray-700 hover:text-purple-600"
-                }`}
-              >
-                Categories
-              </Link>
-              <Link
-                href="/about"
-                className={`text-sm font-medium transition-colors ${
-                  pathname === "/about" ? "text-purple-600" : "text-gray-700 hover:text-purple-600"
-                }`}
-              >
-                About
-              </Link>
-            </div>
+            ))}
           </div>
 
-          {/* Right side - Write button and Profile */}
+          {/* Right side */}
           <div className="flex items-center space-x-4">
             {/* Write Button */}
             {user && (
@@ -115,23 +218,22 @@ export default function MainNavigation() {
               <div className="relative">
                 <button
                   onClick={toggleProfileMenu}
-                  className="flex items-center space-x-2 focus:outline-none"
+                  className="flex items-center space-x-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 rounded-full"
                   data-menu="profile"
+                  aria-label="User menu"
                 >
                   <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-300">
-                    {profile?.avatar_url ? (
+                    {avatarUrl ? (
                       <Image
-                        src={profile.avatar_url || "/placeholder.svg"}
-                        alt={profile.full_name || "User"}
+                        src={avatarUrl || "/placeholder.svg"}
+                        alt={displayName}
                         width={32}
                         height={32}
                         className="w-8 h-8 object-cover"
                       />
                     ) : (
                       <div className="w-8 h-8 bg-purple-100 flex items-center justify-center">
-                        <span className="text-purple-600 text-sm font-medium">
-                          {profile?.full_name?.charAt(0) || user?.email?.charAt(0) || "U"}
-                        </span>
+                        <span className="text-purple-600 text-sm font-medium">{userInitial}</span>
                       </div>
                     )}
                   </div>
@@ -144,35 +246,25 @@ export default function MainNavigation() {
                     data-menu="profile"
                   >
                     <div className="px-4 py-2 border-b border-gray-100">
-                      <p className="text-sm font-medium text-gray-900 truncate">{profile?.full_name || "User"}</p>
+                      <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
                       <p className="text-xs text-gray-500 truncate">{user.email}</p>
                     </div>
-                    <Link
-                      href="/dashboard"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                      onClick={() => setIsProfileMenuOpen(false)}
-                    >
-                      Dashboard
-                    </Link>
-                    <Link
-                      href="/dashboard/profile"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                      onClick={() => setIsProfileMenuOpen(false)}
-                    >
-                      Profile
-                    </Link>
-                    <Link
-                      href="/dashboard/settings"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                      onClick={() => setIsProfileMenuOpen(false)}
-                    >
-                      Settings
-                    </Link>
+                    {[
+                      { href: "/dashboard", label: "Dashboard" },
+                      { href: "/dashboard/profile", label: "Profile" },
+                      { href: "/dashboard/settings", label: "Settings" },
+                    ].map(({ href, label }) => (
+                      <Link
+                        key={href}
+                        href={href}
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        onClick={() => setIsProfileMenuOpen(false)}
+                      >
+                        {label}
+                      </Link>
+                    ))}
                     <button
-                      onClick={async () => {
-                        await supabase.auth.signOut()
-                        window.location.href = "/"
-                      }}
+                      onClick={handleSignOut}
                       className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 border-t border-gray-100"
                     >
                       Sign out
@@ -202,6 +294,7 @@ export default function MainNavigation() {
               onClick={toggleMenu}
               className="md:hidden p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100"
               data-menu="mobile"
+              aria-label="Toggle menu"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -214,36 +307,53 @@ export default function MainNavigation() {
         {isMenuOpen && (
           <div className="md:hidden border-t border-gray-100" data-menu="mobile">
             <div className="px-2 pt-2 pb-3 space-y-1">
-              <Link
-                href="/"
-                className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-purple-600 hover:bg-gray-50 rounded-md"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Home
-              </Link>
-              <Link
-                href="/trending"
-                className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-purple-600 hover:bg-gray-50 rounded-md"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Trending
-              </Link>
-              <Link
-                href="/categories"
-                className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-purple-600 hover:bg-gray-50 rounded-md"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Categories
-              </Link>
-              <Link
-                href="/about"
-                className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-purple-600 hover:bg-gray-50 rounded-md"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                About
-              </Link>
+              {[
+                { href: "/", label: "Home" },
+                { href: "/trending", label: "Trending" },
+                { href: "/categories", label: "Categories" },
+                { href: "/about", label: "About" },
+              ].map(({ href, label }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-purple-600 hover:bg-gray-50 rounded-md"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  {label}
+                </Link>
+              ))}
 
-              {!user && (
+              {user ? (
+                <div className="pt-4 border-t border-gray-100">
+                  <div className="px-3 py-2">
+                    <p className="text-sm font-medium text-gray-900">{displayName}</p>
+                    <p className="text-xs text-gray-500">{user.email}</p>
+                  </div>
+                  {[
+                    { href: "/dashboard", label: "Dashboard" },
+                    { href: "/dashboard/profile", label: "Profile" },
+                    { href: "/dashboard/settings", label: "Settings" },
+                  ].map(({ href, label }) => (
+                    <Link
+                      key={href}
+                      href={href}
+                      className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-purple-600 hover:bg-gray-50 rounded-md"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      {label}
+                    </Link>
+                  ))}
+                  <button
+                    onClick={() => {
+                      setIsMenuOpen(false)
+                      handleSignOut()
+                    }}
+                    className="block w-full text-left px-3 py-2 text-base font-medium text-gray-700 hover:text-purple-600 hover:bg-gray-50 rounded-md"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              ) : (
                 <div className="pt-4 border-t border-gray-100">
                   <Link
                     href="/login"
