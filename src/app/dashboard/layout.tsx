@@ -1,73 +1,223 @@
 "use client"
 
 import type React from "react"
-
-import { useEffect, useState, useCallback } from "react"
-import { useRouter, usePathname } from "next/navigation"
+import { useEffect, useState } from "react"
 import Link from "next/link"
-import { supabase } from "@/lib/supabaseClient"
+import { createClient } from "@/lib/supabase/client"
 import type { User } from "@supabase/supabase-js"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Separator } from "@/components/ui/separator"
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb"
+import { Home, FileText, Settings, UserIcon, LogOut, Plus } from "lucide-react"
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+const sidebarItems = [
+  {
+    title: "Dashboard",
+    url: "/dashboard",
+    icon: Home,
+  },
+  {
+    title: "Posts",
+    url: "/dashboard/posts",
+    icon: FileText,
+  },
+  {
+    title: "New Post",
+    url: "/dashboard/posts/new",
+    icon: Plus,
+  },
+  {
+    title: "Profile",
+    url: "/dashboard/profile",
+    icon: UserIcon,
+  },
+  {
+    title: "Settings",
+    url: "/dashboard/settings",
+    icon: Settings,
+  },
+]
+
+function DashboardSidebar({ user }: { user: User | null }) {
+  const supabase = createClient()
+
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut()
+    } catch (error) {
+      console.error("Sign out error:", error)
+    }
+  }
+
+  return (
+    <Sidebar>
+      <SidebarHeader>
+        <div className="flex items-center gap-2 px-4 py-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <FileText className="h-4 w-4" />
+          </div>
+          <div className="grid flex-1 text-left text-sm leading-tight">
+            <span className="truncate font-semibold">Blog Dashboard</span>
+          </div>
+        </div>
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {sidebarItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild>
+                    <Link href={item.url}>
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton
+                  size="lg"
+                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                >
+                  <Avatar className="h-8 w-8 rounded-lg">
+                    <AvatarImage src={user?.user_metadata?.avatar_url || "/placeholder.svg"} alt={user?.email} />
+                    <AvatarFallback className="rounded-lg">
+                      {user?.email?.charAt(0).toUpperCase() || "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="grid flex-1 text-left text-sm leading-tight">
+                    <span className="truncate font-semibold">{user?.user_metadata?.full_name || "User"}</span>
+                    <span className="truncate text-xs">{user?.email}</span>
+                  </div>
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+                side="bottom"
+                align="end"
+                sideOffset={4}
+              >
+                <DropdownMenuLabel className="p-0 font-normal">
+                  <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                    <Avatar className="h-8 w-8 rounded-lg">
+                      <AvatarImage src={user?.user_metadata?.avatar_url || "/placeholder.svg"} alt={user?.email} />
+                      <AvatarFallback className="rounded-lg">
+                        {user?.email?.charAt(0).toUpperCase() || "U"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <span className="truncate font-semibold">{user?.user_metadata?.full_name || "User"}</span>
+                      <span className="truncate text-xs">{user?.email}</span>
+                    </div>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard/profile">
+                    <UserIcon />
+                    Profile
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard/settings">
+                    <Settings />
+                    Settings
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut}>
+                  <LogOut />
+                  Log out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+  )
+}
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-  const router = useRouter()
-  const pathname = usePathname()
-
-  // Memoize the auth check function to prevent re-renders
-  const checkAuth = useCallback(async () => {
-    try {
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession()
-
-      if (error) {
-        console.error("Auth error:", error)
-        router.push("/login")
-        return
-      }
-
-      if (!session?.user) {
-        router.push("/login")
-        return
-      }
-
-      setUser(session.user)
-    } catch (error) {
-      console.error("Auth check failed:", error)
-      router.push("/login")
-    } finally {
-      setLoading(false)
-    }
-  }, [router])
 
   useEffect(() => {
-    checkAuth()
+    const supabase = createClient()
+
+    // Get initial session
+    const getSession = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        setUser(session?.user ?? null)
+      } catch (error) {
+        console.error("Session error:", error)
+        setUser(null)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    getSession()
 
     // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === "SIGNED_OUT" || !session?.user) {
-        setUser(null)
-        router.push("/login")
-      } else if (event === "SIGNED_IN" && session?.user) {
-        setUser(session.user)
-      }
+      setUser(session?.user ?? null)
+      setLoading(false)
     })
 
     return () => subscription.unsubscribe()
-  }, [checkAuth])
-
-  const handleSignOut = async () => {
-    try {
-      await supabase.auth.signOut()
-      router.push("/login")
-    } catch (error) {
-      console.error("Sign out error:", error)
-    }
-  }
+  }, [])
 
   if (loading) {
     return (
@@ -77,139 +227,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     )
   }
 
-  if (!user) {
-    return null // Will redirect to login
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar */}
-      <div className="w-64 bg-gray-900 text-white flex flex-col">
-        <div className="p-6">
-          <h2 className="text-xl font-bold">ContentAI</h2>
-        </div>
-
-        <nav className="flex-1 px-4 space-y-2">
-          <Link
-            href="/dashboard"
-            className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-              pathname === "/dashboard" ? "bg-blue-600 text-white" : "text-gray-300 hover:bg-gray-800 hover:text-white"
-            }`}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2v0"
-              />
-            </svg>
-            <span>Dashboard</span>
-          </Link>
-
-          <Link
-            href="/dashboard/posts"
-            className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-              pathname.startsWith("/dashboard/posts")
-                ? "bg-blue-600 text-white"
-                : "text-gray-300 hover:bg-gray-800 hover:text-white"
-            }`}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-              />
-            </svg>
-            <span>My Posts</span>
-          </Link>
-
-          <Link
-            href="/dashboard/posts/new"
-            className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-              pathname === "/dashboard/posts/new"
-                ? "bg-blue-600 text-white"
-                : "text-gray-300 hover:bg-gray-800 hover:text-white"
-            }`}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            <span>New Post</span>
-          </Link>
-
-          <Link
-            href="/dashboard/profile"
-            className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-              pathname === "/dashboard/profile"
-                ? "bg-blue-600 text-white"
-                : "text-gray-300 hover:bg-gray-800 hover:text-white"
-            }`}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-              />
-            </svg>
-            <span>Profile</span>
-          </Link>
-
-          <Link
-            href="/dashboard/settings"
-            className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-              pathname === "/dashboard/settings"
-                ? "bg-blue-600 text-white"
-                : "text-gray-300 hover:bg-gray-800 hover:text-white"
-            }`}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-              />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <span>Settings</span>
-          </Link>
-        </nav>
-
-        {/* User Profile Section */}
-        <div className="p-4 border-t border-gray-700">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center">
-              <span className="text-sm font-medium">{user.email?.charAt(0).toUpperCase() || "U"}</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">{user.user_metadata?.full_name || user.email}</p>
-              <p className="text-xs text-gray-400 truncate">{user.email}</p>
-            </div>
+    <SidebarProvider>
+      <DashboardSidebar user={user} />
+      <SidebarInset>
+        <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
+          <div className="flex items-center gap-2 px-4">
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="mr-2 h-4" />
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem className="hidden md:block">
+                  <BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator className="hidden md:block" />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Overview</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
           </div>
-          <button
-            onClick={handleSignOut}
-            className="flex items-center space-x-2 w-full px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white rounded-lg transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-              />
-            </svg>
-            <span>Sign Out</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 overflow-hidden">{children}</div>
-    </div>
+        </header>
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">{children}</div>
+      </SidebarInset>
+    </SidebarProvider>
   )
 }
