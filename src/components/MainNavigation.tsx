@@ -7,6 +7,7 @@ import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
 import { createBrowserClient } from "@supabase/ssr"
 import type { User } from "@supabase/supabase-js"
+import { Sparkles } from "lucide-react"
 
 interface Profile {
   id: string
@@ -153,7 +154,7 @@ export default function MainNavigation() {
           <div className="flex items-center justify-between h-16">
             <Link href="/" className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">C</span>
+                <Sparkles className="w-4 h-4 text-white" />
               </div>
               <span className="text-xl font-bold text-gray-900">ContentAI</span>
             </Link>
@@ -164,7 +165,7 @@ export default function MainNavigation() {
     )
   }
 
-  // Get display values
+  // Get display values for logged-in users
   const displayName = user?.profile?.full_name || "User"
   const avatarUrl = user?.profile?.avatar_url
   const userInitial = displayName.charAt(0) || user?.email?.charAt(0) || "U"
@@ -176,34 +177,61 @@ export default function MainNavigation() {
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">C</span>
+              <Sparkles className="w-4 h-4 text-white" />
             </div>
             <span className="text-xl font-bold text-gray-900">ContentAI</span>
           </Link>
 
-          {/* Desktop Navigation */}
+          {/* Desktop Navigation - Different for logged in vs logged out users */}
           <div className="hidden md:flex items-center space-x-8">
-            {[
-              { href: "/", label: "Home" },
-              { href: "/trending", label: "Trending" },
-              { href: "/categories", label: "Categories" },
-              { href: "/about", label: "About" },
-            ].map(({ href, label }) => (
-              <Link
-                key={href}
-                href={href}
-                className={`text-sm font-medium transition-colors ${
-                  pathname === href ? "text-purple-600" : "text-gray-700 hover:text-purple-600"
-                }`}
-              >
-                {label}
-              </Link>
-            ))}
+            {user ? (
+              // Logged in user navigation - Home points to /blog
+              <>
+                {[
+                  { href: "/blog", label: "Home" },
+                  { href: "/trending", label: "Trending" },
+                  { href: "/categories", label: "Categories" },
+                  { href: "/about", label: "About" },
+                ].map(({ href, label }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={`text-sm font-medium transition-colors ${
+                      pathname === href || (href === "/blog" && pathname === "/")
+                        ? "text-purple-600"
+                        : "text-gray-700 hover:text-purple-600"
+                    }`}
+                  >
+                    {label}
+                  </Link>
+                ))}
+              </>
+            ) : (
+              // Public user navigation
+              <>
+                {[
+                  { href: "/features", label: "Features" },
+                  { href: "/pricing", label: "Pricing" },
+                  { href: "/blog", label: "Blog" },
+                  { href: "/contact", label: "Contact" },
+                ].map(({ href, label }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={`text-sm font-medium transition-colors ${
+                      pathname === href ? "text-purple-600" : "text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    {label}
+                  </Link>
+                ))}
+              </>
+            )}
           </div>
 
           {/* Right side */}
           <div className="flex items-center space-x-4">
-            {/* Write Button */}
+            {/* Write Button - Only for logged in users */}
             {user && (
               <Link
                 href="/dashboard/posts/new"
@@ -273,18 +301,15 @@ export default function MainNavigation() {
                 )}
               </div>
             ) : (
-              <div className="hidden md:flex items-center space-x-3">
-                <Link
-                  href="/login"
-                  className="text-sm font-medium text-gray-700 hover:text-purple-600 transition-colors"
-                >
-                  Sign in
+              <div className="hidden md:flex items-center space-x-4">
+                <Link href="/login" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
+                  Sign In
                 </Link>
                 <Link
                   href="/register"
                   className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                 >
-                  Get started
+                  Get Started
                 </Link>
               </div>
             )}
@@ -307,32 +332,14 @@ export default function MainNavigation() {
         {isMenuOpen && (
           <div className="md:hidden border-t border-gray-100" data-menu="mobile">
             <div className="px-2 pt-2 pb-3 space-y-1">
-              {[
-                { href: "/", label: "Home" },
-                { href: "/trending", label: "Trending" },
-                { href: "/categories", label: "Categories" },
-                { href: "/about", label: "About" },
-              ].map(({ href, label }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-purple-600 hover:bg-gray-50 rounded-md"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  {label}
-                </Link>
-              ))}
-
               {user ? (
-                <div className="pt-4 border-t border-gray-100">
-                  <div className="px-3 py-2">
-                    <p className="text-sm font-medium text-gray-900">{displayName}</p>
-                    <p className="text-xs text-gray-500">{user.email}</p>
-                  </div>
+                // Logged in user mobile navigation - Home points to /blog
+                <>
                   {[
-                    { href: "/dashboard", label: "Dashboard" },
-                    { href: "/dashboard/profile", label: "Profile" },
-                    { href: "/dashboard/settings", label: "Settings" },
+                    { href: "/blog", label: "Home" },
+                    { href: "/trending", label: "Trending" },
+                    { href: "/categories", label: "Categories" },
+                    { href: "/about", label: "About" },
                   ].map(({ href, label }) => (
                     <Link
                       key={href}
@@ -343,33 +350,73 @@ export default function MainNavigation() {
                       {label}
                     </Link>
                   ))}
-                  <button
-                    onClick={() => {
-                      setIsMenuOpen(false)
-                      handleSignOut()
-                    }}
-                    className="block w-full text-left px-3 py-2 text-base font-medium text-gray-700 hover:text-purple-600 hover:bg-gray-50 rounded-md"
-                  >
-                    Sign out
-                  </button>
-                </div>
+
+                  <div className="pt-4 border-t border-gray-100">
+                    <div className="px-3 py-2">
+                      <p className="text-sm font-medium text-gray-900">{displayName}</p>
+                      <p className="text-xs text-gray-500">{user.email}</p>
+                    </div>
+                    {[
+                      { href: "/dashboard", label: "Dashboard" },
+                      { href: "/dashboard/profile", label: "Profile" },
+                      { href: "/dashboard/settings", label: "Settings" },
+                    ].map(({ href, label }) => (
+                      <Link
+                        key={href}
+                        href={href}
+                        className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-purple-600 hover:bg-gray-50 rounded-md"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        {label}
+                      </Link>
+                    ))}
+                    <button
+                      onClick={() => {
+                        setIsMenuOpen(false)
+                        handleSignOut()
+                      }}
+                      className="block w-full text-left px-3 py-2 text-base font-medium text-gray-700 hover:text-purple-600 hover:bg-gray-50 rounded-md"
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                </>
               ) : (
-                <div className="pt-4 border-t border-gray-100">
-                  <Link
-                    href="/login"
-                    className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-purple-600 hover:bg-gray-50 rounded-md"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    Sign in
-                  </Link>
-                  <Link
-                    href="/register"
-                    className="block px-3 py-2 text-base font-medium bg-purple-600 text-white rounded-md mt-2"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    Get started
-                  </Link>
-                </div>
+                // Public user mobile navigation
+                <>
+                  {[
+                    { href: "/features", label: "Features" },
+                    { href: "/pricing", label: "Pricing" },
+                    { href: "/blog", label: "Blog" },
+                    { href: "/contact", label: "Contact" },
+                  ].map(({ href, label }) => (
+                    <Link
+                      key={href}
+                      href={href}
+                      className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-purple-600 hover:bg-gray-50 rounded-md"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      {label}
+                    </Link>
+                  ))}
+
+                  <div className="pt-4 border-t border-gray-100">
+                    <Link
+                      href="/login"
+                      className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-purple-600 hover:bg-gray-50 rounded-md"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      Sign In
+                    </Link>
+                    <Link
+                      href="/register"
+                      className="block px-3 py-2 text-base font-medium bg-purple-600 text-white rounded-md mt-2"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      Get Started
+                    </Link>
+                  </div>
+                </>
               )}
             </div>
           </div>
